@@ -1,0 +1,44 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "my_ideas": "My Ideas",
+    "admin_dashboard": "Admin Dashboard",
+    "users": "Users",
+    "idea_submissions": "Idea Submissions",
+    "profile": "Profile",
+    "log_out": "Log Out"
+  },
+  "ideas": {
+    "my_ideas_title": "My Ideas",
+    "found": "found",
+    "submission": "submission",
+    "submissions": "submissions",
+    "submit_new": "Submit New Idea",
+    "search_placeholder": "Search code, title, status…",
+    "date_range": "Date Range",
+    "to": "to",
+    "idea_details": "Idea Details",
+    "status_date": "Status & Date",
+    "progress": "Progress",
+    "date": "Date",
+    "score": "Score",
+    "action_required": "Action required",
+    "no_results": "No results match your filters",
+    "no_results_desc": "Try adjusting your search or date range.",
+    "no_ideas": "No ideas submitted yet",
+    "no_ideas_desc": "Get started by logging a new shop floor improvement."
+  },
+  "admin": {
+    "dashboard_title": "SPS Admin Dashboard",
+    "search_placeholder": "Search code, title, submitter",
+    "submitter_info": "Submitter Info",
+    "open_details": "Open details to review.",
+    "no_submissions": "No submissions found",
+    "no_submissions_desc": "There are currently no ideas waiting in the queue."
+  },
+  "common": {
+    "back": "Back",
+    "save": "Save",
+    "cancel": "Cancel"
+  }
+}

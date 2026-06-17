@@ -1,0 +1,44 @@
+{
+  "nav": {
+    "dashboard": "Beranda",
+    "my_ideas": "Ide Saya",
+    "admin_dashboard": "Beranda Admin",
+    "users": "Pengguna",
+    "idea_submissions": "Pengajuan Ide",
+    "profile": "Profil",
+    "log_out": "Keluar"
+  },
+  "ideas": {
+    "my_ideas_title": "Ide Saya",
+    "found": "ditemukan",
+    "submission": "pengajuan",
+    "submissions": "pengajuan",
+    "submit_new": "Ajukan Ide Baru",
+    "search_placeholder": "Cari kode, judul, status…",
+    "date_range": "Rentang Waktu",
+    "to": "sampai",
+    "idea_details": "Detail Ide",
+    "status_date": "Status & Tanggal",
+    "progress": "Progres",
+    "date": "Tanggal",
+    "score": "Skor",
+    "action_required": "Tindakan diperlukan",
+    "no_results": "Tidak ada hasil yang sesuai dengan filter",
+    "no_results_desc": "Cobalah sesuaikan pencarian atau rentang tanggal Anda.",
+    "no_ideas": "Belum ada ide yang diajukan",
+    "no_ideas_desc": "Mulai dengan mencatat perbaikan shop floor baru."
+  },
+  "admin": {
+    "dashboard_title": "Dasbor Admin SPS",
+    "search_placeholder": "Cari kode, judul, pengaju",
+    "submitter_info": "Info Pengaju",
+    "open_details": "Buka detail untuk meninjau.",
+    "no_submissions": "Tidak ada pengajuan ditemukan",
+    "no_submissions_desc": "Saat ini tidak ada ide yang mengantri."
+  },
+  "common": {
+    "back": "Kembali",
+    "save": "Simpan",
+    "cancel": "Batal"
+  }
+}
