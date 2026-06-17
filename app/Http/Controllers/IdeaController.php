@@ -124,6 +124,13 @@ class IdeaController extends Controller
                     $idea->attachments()->create($attachmentData);
                 }
             }
+
+            \App\Models\ReviewLog::create([
+                'idea_id' => $idea->id,
+                'reviewer_id' => Auth::id(),
+                'action' => 'Submitted',
+                'comments' => 'Idea submitted and sent for SPS Review.',
+            ]);
         });
 
         return redirect()->route('ideas.index')->with('success', 'Idea submitted successfully and sent to SPS for review.');
@@ -213,9 +220,24 @@ class IdeaController extends Controller
             ]);
 
             if (in_array($idea->status, ['Revision Requested', 'Draft'], true)) {
-                $idea->status = 'SPS Review';
-                $idea->current_reviewer_role = 'sps';
-                $idea->completion_percentage = 20;
+                $checkpoint = $idea->revision_checkpoint ?? 'SPS Review';
+                $idea->status = $checkpoint;
+                $idea->revision_checkpoint = null;
+                
+                if ($checkpoint === 'Technical Review') {
+                    $idea->current_reviewer_role = 'technical_reviewer';
+                    $idea->completion_percentage = 40;
+                } elseif ($checkpoint === 'Managerial Review') {
+                    $idea->current_reviewer_role = 'managerial';
+                    $idea->completion_percentage = 60;
+                } elseif ($checkpoint === 'Reward Processing') {
+                    $idea->current_reviewer_role = 'reward_processing';
+                    $idea->completion_percentage = 80;
+                } else {
+                    $idea->current_reviewer_role = 'sps';
+                    $idea->completion_percentage = 20;
+                }
+                
                 $idea->save();
 
                 \App\Models\ReviewLog::create([

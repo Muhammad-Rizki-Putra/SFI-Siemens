@@ -14,8 +14,9 @@ const props = defineProps({
         default: 'manager',
     }
 });
-
 const { show: showToast } = useToast();
+
+const isFinalStatus = computed(() => ['Implemented', 'Closed', 'Rejected'].includes(props.idea.status));
 
 const workflowForm = useForm({
     action: 'Approved',
@@ -59,7 +60,7 @@ const submitWorkflow = () => {
                         <option v-if="props.type === 'sps'" value="Implemented">Mark as Implemented</option>
                     </select>
                 </div>
-                <div v-if="workflowForm.action === 'Rejected' && props.type === 'manager'">
+                <div v-if="workflowForm.action === 'Rejected'">
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Reject Mode</label>
                     <select v-model="workflowForm.reject_mode" class="w-full rounded-lg border-slate-200 bg-slate-50 text-sm text-slate-700 focus:border-teal-500 focus:ring-teal-500">
                         <option value="revise">Return for Revision</option>
@@ -100,7 +101,7 @@ const submitWorkflow = () => {
             <div class="flex justify-end pt-2">
                 <button
                     type="submit"
-                    :disabled="workflowForm.processing"
+                    :disabled="workflowForm.processing || isFinalStatus"
                     class="inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-teal-700 hover:bg-teal-600 disabled:opacity-50 transition shadow-sm"
                 >
                     Save Decision

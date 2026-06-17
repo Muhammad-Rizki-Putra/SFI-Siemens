@@ -467,6 +467,17 @@ const timelineMeta = (status) => statusPalette[status] || statusPalette.Submitte
                                         <dd class="text-sm text-slate-900">{{ idea.type_of_improvement }}</dd>
                                     </div>
                                 </div>
+                                <div class="flex items-start gap-3" v-if="idea.team_members && idea.team_members.length">
+                                    <User class="w-4 h-4 text-teal-600 mt-0.5 shrink-0" />
+                                    <div>
+                                        <dt class="text-xs text-slate-500 mb-1">Team Members</dt>
+                                        <dd>
+                                            <ul class="list-disc pl-4 text-sm text-slate-900 space-y-0.5">
+                                                <li v-for="member in idea.team_members" :key="member.id">{{ member.name }}</li>
+                                            </ul>
+                                        </dd>
+                                    </div>
+                                </div>
                                 <div class="flex items-start gap-3">
                                     <Calendar class="w-4 h-4 text-teal-600 mt-0.5 shrink-0" />
                                     <div>
@@ -480,25 +491,25 @@ const timelineMeta = (status) => statusPalette[status] || statusPalette.Submitte
                         <!-- Timeline -->
                         <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
                             <h3 class="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-5">Timeline</h3>
-                            <div class="relative pl-6">
-                                <!-- Vertical connector line -->
-                                <div class="absolute left-[7px] top-1 bottom-1 w-px bg-slate-200"></div>
-
-                                <div class="space-y-5">
+                            <div class="relative">
+                                <div class="flex flex-col">
                                     <div
                                         v-for="(log, index) in timelineEntries"
                                         :key="log.id"
-                                        class="relative"
+                                        class="relative pb-5 last:pb-0 flex items-stretch gap-3"
                                     >
-                                        <!-- Dot -->
-                                        <div
-                                            class="absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-white ring-2 shrink-0"
-                                            :class="timelineMeta(log.action).dot"
-                                            :style="{ ringColor: 'transparent' }"
-                                        ></div>
+                                        <div class="relative flex flex-col items-center pt-1 w-3.5">
+                                            <!-- Dot -->
+                                            <div
+                                                class="h-3.5 w-3.5 rounded-full border-2 border-white ring-2 shrink-0 z-10"
+                                                :class="timelineMeta(log.action).dot"
+                                                :style="{ ringColor: 'transparent' }"
+                                            ></div>
+                                            <div v-if="index !== timelineEntries.length - 1" class="w-px bg-slate-200 flex-1 mt-0.5 -mb-5"></div>
+                                        </div>
 
                                         <!-- Content -->
-                                        <div class="pb-1">
+                                        <div class="min-w-0 flex-1 pb-1">
                                             <div class="flex items-center justify-between gap-2">
                                                 <p class="text-sm font-semibold leading-tight" :class="timelineMeta(log.action).text">
                                                     {{ log.action === 'Resubmitted' ? 'Submission resubmit for check' : log.action }}
@@ -507,14 +518,9 @@ const timelineMeta = (status) => statusPalette[status] || statusPalette.Submitte
                                             <div class="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
                                                 <span>{{ new Date(log.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) }}</span>
                                                 <span>·</span>
-                                                <span>{{ new Date(log.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) }}</span>
+                                                <span>{{ log.reviewer?.name || (log.action === 'Submitted' ? idea.user?.name : 'System') }}</span>
                                             </div>
-                                            <p class="text-xs text-slate-500 mt-0.5">
-                                                {{ log.reviewer?.name || 'System' }}
-                                            </p>
-                                            <p v-if="log.comments" class="text-xs text-slate-600 mt-1.5 italic leading-relaxed break-words overflow-hidden">
-                                                "{{ log.comments }}"
-                                            </p>
+                                            <p v-if="log.comments" class="text-xs text-slate-600 mt-1 italic break-words">"{{ log.comments }}"</p>
                                         </div>
                                     </div>
                                 </div>

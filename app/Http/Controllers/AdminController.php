@@ -77,18 +77,32 @@ class AdminController extends Controller
     {
         $validated = $request->validate([
             'action' => 'required|in:Approved,Rejected,Implemented',
+            'reject_mode' => 'nullable|in:revise,closed',
             'comments' => 'nullable|string|max:1000',
         ]);
 
+        $oldStatus = $idea->status;
+        $actionToLog = '';
+
         if ($validated['action'] === 'Rejected') {
-            $idea->status = 'Rejected';
-            $idea->completion_percentage = 0;
-            $idea->current_reviewer_role = null;
+            if (($validated['reject_mode'] ?? 'revise') === 'closed') {
+                $idea->status = 'Closed';
+                $idea->completion_percentage = 0;
+                $idea->current_reviewer_role = null;
+                $actionToLog = 'Closed';
+            } else {
+                $idea->status = 'Revision Requested';
+                $idea->revision_checkpoint = $oldStatus;
+                $idea->current_reviewer_role = null;
+                $actionToLog = 'Revision Requested';
+            }
         } elseif ($validated['action'] === 'Implemented') {
             $idea->status = 'Implemented';
             $idea->completion_percentage = 100;
             $idea->current_reviewer_role = null;
+            $actionToLog = 'Implemented';
         } else {
+            $actionToLog = $oldStatus; // Log the phase that was just completed
             if ($idea->status === 'SPS Review') {
                 $idea->status = 'Technical Review';
                 $idea->completion_percentage = 30;
@@ -105,7 +119,7 @@ class AdminController extends Controller
         ReviewLog::create([
             'idea_id' => $idea->id,
             'reviewer_id' => Auth::id(),
-            'action' => $validated['action'],
+            'action' => $actionToLog,
             'comments' => $validated['comments'] ?? '',
         ]);
 
@@ -143,23 +157,30 @@ class AdminController extends Controller
             'opw_notes' => $validated['opw_notes'] ?? null,
         ]);
 
+        $oldStatus = $idea->status;
         $newStatus = $idea->status;
         $reviewerRole = $idea->current_reviewer_role;
         $completion = $idea->completion_percentage;
+        $actionToLog = '';
 
         if ($validated['action'] === 'Draft') {
             $newStatus = 'Draft';
             $reviewerRole = null;
+            $actionToLog = 'Draft';
         } elseif ($validated['action'] === 'Rejected') {
             if (($validated['reject_mode'] ?? 'revise') === 'closed') {
                 $newStatus = 'Closed';
                 $reviewerRole = null;
                 $completion = 0;
+                $actionToLog = 'Closed';
             } else {
                 $newStatus = 'Revision Requested';
+                $idea->revision_checkpoint = $oldStatus;
                 $reviewerRole = null;
+                $actionToLog = 'Revision Requested';
             }
         } else {
+            $actionToLog = $oldStatus; // Log the phase that was just completed
             if ($idea->status === 'SPS Review' || $idea->status === 'Revision Requested') {
                 $newStatus = 'Technical Review';
                 $reviewerRole = 'technical_reviewer';
@@ -187,7 +208,7 @@ class AdminController extends Controller
         ReviewLog::create([
             'idea_id' => $idea->id,
             'reviewer_id' => Auth::id(),
-            'action' => $newStatus,
+            'action' => $actionToLog,
             'comments' => $validated['comments'] ?? '',
         ]);
 

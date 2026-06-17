@@ -74,23 +74,32 @@ const timelineMeta = (s) => statusPalette[s] || statusPalette.Submitted;
                         Back
                     </Link>
                     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                        <div>
-                            <h1 class="text-2xl font-semibold text-slate-900">{{ idea.title }}</h1>
+                        <div class="min-w-0">
+                            <h1 class="text-2xl font-bold text-slate-900 truncate">{{ idea.title }}</h1>
                             <p class="text-sm text-slate-500 mt-1">
-                                Kode: <span class="font-mono font-medium text-slate-700">{{ idea.submission_code }}</span>
+                                Code: <span class="font-mono font-medium text-slate-700">{{ idea.submission_code }}</span>
                             </p>
                         </div>
-                        <span class="self-start md:self-auto inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border" :class="{
-                            'bg-slate-100 text-slate-700 border-slate-200':   idea.status === 'Draft',
-                            'bg-amber-100 text-amber-700 border-amber-200':   idea.status === 'Revision Requested',
-                            'bg-teal-100  text-teal-800  border-teal-300':    ['SPS Review','Technical Review','Managerial Review'].includes(idea.status),
-                            'bg-blue-100  text-blue-700  border-blue-200':    idea.status === 'Reward Processing',
-                            'bg-emerald-100 text-emerald-800 border-emerald-300': idea.status === 'Implemented',
-                            'bg-rose-100  text-rose-700  border-rose-200':    ['Rejected','Closed'].includes(idea.status),
-                        }">
-                            <Activity class="w-4 h-4 mr-1.5" />
-                            {{ idea.status }}
-                        </span>
+                        <div class="flex flex-wrap items-center gap-3 shrink-0">
+                            <Link
+                                v-if="!adminActions && ['Revision Requested', 'Draft'].includes(idea.status)"
+                                :href="route('ideas.edit', idea.id)"
+                                class="inline-flex items-center px-4 py-1.5 bg-amber-500 text-white text-sm font-semibold rounded-lg hover:bg-amber-600 transition shadow-sm"
+                            >
+                                Edit Submission
+                            </Link>
+                            <span class="self-start md:self-auto inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border" :class="{
+                                'bg-slate-100 text-slate-700 border-slate-200':   idea.status === 'Draft',
+                                'bg-amber-100 text-amber-700 border-amber-200':   idea.status === 'Revision Requested',
+                                'bg-teal-100  text-teal-800  border-teal-300':    ['SPS Review','Technical Review','Managerial Review'].includes(idea.status),
+                                'bg-blue-100  text-blue-700  border-blue-200':    idea.status === 'Reward Processing',
+                                'bg-emerald-100 text-emerald-800 border-emerald-300': idea.status === 'Implemented',
+                                'bg-rose-100  text-rose-700  border-rose-200':    ['Rejected','Closed'].includes(idea.status),
+                            }">
+                                <Activity class="w-4 h-4 mr-1.5" />
+                                {{ idea.status }}
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -240,6 +249,17 @@ const timelineMeta = (s) => statusPalette[s] || statusPalette.Submitted;
                                         <dd class="text-sm text-slate-900">{{ idea.type_of_improvement }}</dd>
                                     </div>
                                 </div>
+                                <div class="flex items-start gap-3" v-if="idea.team_members && idea.team_members.length">
+                                    <User class="w-4 h-4 text-teal-600 mt-0.5 shrink-0" />
+                                    <div>
+                                        <dt class="text-xs text-slate-500 mb-1">Team Members</dt>
+                                        <dd>
+                                            <ul class="list-disc pl-4 text-sm text-slate-900 space-y-0.5">
+                                                <li v-for="member in idea.team_members" :key="member.id">{{ member.name }}</li>
+                                            </ul>
+                                        </dd>
+                                    </div>
+                                </div>
                                 <div class="flex items-start gap-3">
                                     <Calendar class="w-4 h-4 text-teal-600 mt-0.5 shrink-0" />
                                     <div>
@@ -308,13 +328,15 @@ const timelineMeta = (s) => statusPalette[s] || statusPalette.Submitted;
                         <!-- Timeline -->
                         <div class="bg-white rounded-2xl shadow-sm border border-teal-100 p-5">
                             <h3 class="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-5">Timeline</h3>
-                            <div class="relative pl-6">
-                                <div class="absolute left-[7px] top-1 bottom-1 w-px bg-slate-200"></div>
-                                <div class="space-y-5">
-                                    <div v-for="log in idea.review_logs" :key="log.id" class="relative">
-                                        <div class="absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-white ring-2 ring-slate-100 shrink-0"
-                                            :class="timelineMeta(log.action).dot"></div>
-                                        <div>
+                            <div class="relative">
+                                <div class="flex flex-col">
+                                    <div v-for="(log, index) in idea.review_logs" :key="log.id" class="relative pb-5 last:pb-0 flex items-stretch gap-3">
+                                        <div class="relative flex flex-col items-center pt-1 w-3.5">
+                                            <div class="h-3.5 w-3.5 rounded-full border-2 border-white ring-2 ring-slate-100 shrink-0 z-10"
+                                                :class="timelineMeta(log.action).dot"></div>
+                                            <div v-if="index !== idea.review_logs.length - 1" class="w-px bg-slate-200 flex-1 mt-0.5 -mb-5"></div>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
                                             <p class="text-sm font-semibold" :class="timelineMeta(log.action).text">
                                                 {{ log.action === 'Resubmitted' ? 'Submission resubmit for check' : log.action }}
                                             </p>

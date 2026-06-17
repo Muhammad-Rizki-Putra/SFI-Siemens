@@ -378,6 +378,15 @@ const timelineMeta = (status) => statusPalette[status] || statusPalette.Submitte
                                         <p class="text-xs text-slate-500">Category</p>
                                     </div>
                                 </li>
+                                <li class="flex items-start" v-if="idea.team_members && idea.team_members.length">
+                                    <User class="w-5 h-5 text-teal-700 mr-3 mt-0.5" />
+                                    <div>
+                                        <ul class="list-disc pl-4 text-sm text-slate-900 space-y-0.5">
+                                            <li v-for="member in idea.team_members" :key="member.id">{{ member.name }}</li>
+                                        </ul>
+                                        <p class="text-xs text-slate-500 mt-1">Team Members</p>
+                                    </div>
+                                </li>
                                 <li class="flex items-center">
                                     <Calendar class="w-5 h-5 text-teal-700 mr-3" />
                                     <div>
