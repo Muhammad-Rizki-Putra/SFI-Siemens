@@ -1,8 +1,8 @@
 <script setup>
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { ArrowLeft, User, Calendar, Tag, Activity, FileText, Calculator, CheckCircle, Lightbulb } from 'lucide-vue-next';
+import { ArrowLeft, User, Calendar, Tag, Activity, FileText, Calculator, CheckCircle, Lightbulb, Paperclip } from 'lucide-vue-next';
 import { useToast } from '@/Composables/useToast';
 
 const { show: showToast } = useToast();
@@ -23,8 +23,6 @@ const formatRupiah = (v) => 'Rp\u202f' + Number(v || 0).toLocaleString('id-ID');
 import EvaluationMatrixForm from '@/Components/EvaluationMatrixForm.vue';
 import WorkflowDecisionForm from '@/Components/WorkflowDecisionForm.vue';
 
-const activeTab = ref('workflow');
-
 // ─── Read-only score display ───────────────────────────────────────────────
 const score    = computed(() => props.idea.score || {});
 const aTotal   = computed(() =>
@@ -36,11 +34,47 @@ const sfTotal  = computed(() => {
     const base = aTotal.value * Number(score.value.factor_b || 0) + Number(score.value.implementation_factor || 0);
     return score.value.category === 'intangible' ? base + Number(score.value.factor_c || 0) : base;
 });
+const intangibleAwardLookup = (points) => {
+    if (points < 10)  return 0;
+    if (points >= 60) return 40_000_000;
+    const anchors = [
+        [10, 300_000],   [15, 1_000_000],  [20, 2_500_000],
+        [25, 5_000_000], [30, 8_000_000],  [35, 12_500_000],
+        [40, 17_500_000],[45, 23_000_000], [50, 28_500_000],
+        [55, 34_000_000],[60, 40_000_000],
+    ];
+    for (let i = 0; i < anchors.length - 1; i++) {
+        const [p1, r1] = anchors[i];
+        const [p2, r2] = anchors[i + 1];
+        if (points >= p1 && points < p2) {
+            const t = (points - p1) / (p2 - p1);
+            return Math.round(r1 + t * (r2 - r1));
+        }
+    }
+    return 40_000_000;
+};
 const displayReward = computed(() => {
     if (!score.value.category) return 0;
     if (score.value.category === 'intangible') return intangibleAwardLookup(sfTotal.value);
     return Number(score.value.cost_savings || 0) * (Number(score.value.reward_percent || 0) / 100);
 });
+
+// ─── SPS Phase: controls which admin panel is shown ───────────────────────
+// Phase 'workflow'   → SPS has not yet approved (no SPS Review log)
+// Phase 'evaluation' → SPS approved workflow, evaluation matrix not yet saved
+// Phase 'done'       → scoring saved, idea forwarded to Technical Review
+const spsWorkflowApproved = computed(() =>
+    Array.isArray(props.idea.review_logs) &&
+    props.idea.review_logs.some((l) => l.action === 'SPS Review')
+);
+const spsPhase = computed(() => {
+    if (!spsWorkflowApproved.value) return 'workflow';
+    if (score.value.category) return 'done';       // score saved → forwarded
+    return 'evaluation';                            // score not yet filled
+});
+const step1Tab = ref('details');
+const step2Tab = ref('matrix');
+const doneTab  = ref('summary');
 
 // ─── Timeline ─────────────────────────────────────────────────────────────
 const statusPalette = {
@@ -57,6 +91,52 @@ const statusPalette = {
     'Resubmitted':       { dot: 'bg-teal-500',    text: 'text-teal-700' },
 };
 const timelineMeta = (s) => statusPalette[s] || statusPalette.Submitted;
+
+// ─── Attachment helpers ────────────────────────────────────────────────────
+const attachmentExt = (path) => (path ? path.split('.').pop()?.toLowerCase() : '');
+const isImage = (a) => {
+    const mime = a?.mime_type || '';
+    const ext = attachmentExt(a?.storage_path);
+    return mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp'].includes(ext);
+};
+const isVideo = (a) => {
+    const mime = a?.mime_type || '';
+    const ext = attachmentExt(a?.storage_path);
+    return mime.startsWith('video/') || ['mp4', 'mov'].includes(ext);
+};
+const isPdf = (a) => {
+    const mime = a?.mime_type || '';
+    const ext = attachmentExt(a?.storage_path);
+    return mime === 'application/pdf' || ext === 'pdf';
+};
+
+const previewUrls = reactive({});
+const selectedAttachmentId = ref(null);
+const selectedAttachment = computed(() =>
+    props.idea?.attachments?.find((a) => a.id === selectedAttachmentId.value) || null
+);
+
+const loadPreview = async (attachment) => {
+    if (!attachment?.id || previewUrls[attachment.id]) return;
+    if (isPdf(attachment)) return;
+    try {
+        const response = await fetch(route('attachments.show', attachment.id));
+        if (!response.ok) return;
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.onload = () => { previewUrls[attachment.id] = reader.result; };
+        reader.readAsDataURL(blob);
+    } catch (_) {}
+};
+
+const previewUrl = (a) => previewUrls[a.id] || '';
+const attachmentPreviewUrl = (a) => route('attachments.preview', a.id);
+
+onMounted(() => {
+    if (!props.idea?.attachments?.length) return;
+    selectedAttachmentId.value = props.idea.attachments[0].id;
+    props.idea.attachments.forEach((a) => loadPreview(a));
+});
 </script>
 
 <template>
@@ -108,74 +188,301 @@ const timelineMeta = (s) => statusPalette[s] || statusPalette.Submitted;
                     <!-- ── Left Column (2/3) ──────────────────────────── -->
                     <div class="lg:col-span-2 space-y-6">
 
-                        <!-- ════ ADMIN: Tabs untuk Workflow / Evaluation ════════════ -->
+                        <!-- ════ ADMIN SPS: Phase-based panels ════════════════════ -->
                         <div v-if="adminActions" class="space-y-4">
-                            <!-- Tabs Navigation -->
-                            <div class="flex border-b border-slate-200">
-                                <button
-                                    @click="activeTab = 'workflow'"
-                                    :class="[
-                                        'py-2.5 px-5 text-sm font-medium border-b-2 transition-colors',
-                                        activeTab === 'workflow'
-                                            ? 'border-teal-500 text-teal-700'
-                                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                                    ]"
-                                >
-                                    Workflow Decision
-                                </button>
-                                <button
-                                    @click="activeTab = 'evaluation'"
-                                    :class="[
-                                        'py-2.5 px-5 text-sm font-medium border-b-2 transition-colors',
-                                        activeTab === 'evaluation'
-                                            ? 'border-teal-500 text-teal-700'
-                                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                                    ]"
-                                >
-                                    Evaluation Matrix
-                                </button>
-                                <button
-                                    @click="activeTab = 'details'"
-                                    :class="[
-                                        'py-2.5 px-5 text-sm font-medium border-b-2 transition-colors',
-                                        activeTab === 'details'
-                                            ? 'border-teal-500 text-teal-700'
-                                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                                    ]"
-                                >
-                                    Submission Details
-                                </button>
+
+                            <!-- Phase badge -->
+                            <div class="flex items-center gap-2">
+                                <span v-if="spsPhase === 'workflow'" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                                    <span class="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></span>
+                                    Step 1 &mdash; Review &amp; Decision
+                                </span>
+                                <span v-else-if="spsPhase === 'evaluation'" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    <span class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                                    Step 2 &mdash; Evaluation Matrix
+                                </span>
+                                <span v-else class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                    Selesai &mdash; Diteruskan ke Technical Review
+                                </span>
                             </div>
 
-                            <!-- Tabs Content -->
-                            <transition mode="out-in" enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0 translate-y-1" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 translate-y-1">
-                                <div v-if="activeTab === 'workflow'" :key="'workflow'">
-                                    <WorkflowDecisionForm :idea="idea" type="sps" />
-                                </div>
-                                <div v-else-if="activeTab === 'evaluation'" :key="'evaluation'">
-                                    <EvaluationMatrixForm :idea="idea" />
-                                </div>
-                                <div v-else-if="activeTab === 'details'" :key="'details'">
-                                    <div class="bg-white rounded-2xl shadow-sm border border-teal-100 p-6">
-                                        <h2 class="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center mb-4">
-                                            <FileText class="w-4 h-4 mr-2 text-teal-600" />
-                                            Deskripsi Ide
-                                        </h2>
-                                        <div class="space-y-4 text-sm text-slate-700">
-                                            <div>
-                                                <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Deskripsi Masalah</div>
-                                                <div class="whitespace-pre-line leading-relaxed">{{ idea.problem_description || 'N/A' }}</div>
+                            <!-- Outer phase transition -->
+                            <transition mode="out-in"
+                                enter-active-class="transition duration-200 ease-out"
+                                enter-from-class="opacity-0 translate-y-1"
+                                enter-to-class="opacity-100 translate-y-0"
+                                leave-active-class="transition duration-150 ease-in"
+                                leave-from-class="opacity-100 translate-y-0"
+                                leave-to-class="opacity-0 translate-y-1"
+                            >
+                                <!-- ── STEP 1: Tabbed (Submission Details | Workflow Decision) ── -->
+                                <div v-if="spsPhase === 'workflow'" key="sps-step1" class="space-y-4">
+                                    <!-- Tab bar -->
+                                    <div class="flex border-b border-slate-200">
+                                        <button @click="step1Tab = 'details'"
+                                            :class="['py-2.5 px-5 text-sm font-medium border-b-2 transition-colors', step1Tab === 'details' ? 'border-teal-500 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300']">
+                                            Submission Details
+                                        </button>
+                                        <button @click="step1Tab = 'workflow'"
+                                            :class="['py-2.5 px-5 text-sm font-medium border-b-2 transition-colors', step1Tab === 'workflow' ? 'border-teal-500 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300']">
+                                            Workflow Decision
+                                        </button>
+                                    </div>
+
+                                    <!-- Inner tab transition -->
+                                    <transition mode="out-in"
+                                        enter-active-class="transition duration-150 ease-out"
+                                        enter-from-class="opacity-0 translate-y-1"
+                                        enter-to-class="opacity-100 translate-y-0"
+                                        leave-active-class="transition duration-100 ease-in"
+                                        leave-from-class="opacity-100"
+                                        leave-to-class="opacity-0"
+                                    >
+                                        <!-- Submission Details -->
+                                        <div v-if="step1Tab === 'details'" key="s1-details" class="space-y-4">
+                                            <div class="bg-white rounded-2xl shadow-sm border border-teal-100 p-6">
+                                                <h2 class="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center mb-4">
+                                                    <FileText class="w-4 h-4 mr-2 text-teal-600" />
+                                                    Deskripsi Ide
+                                                </h2>
+                                                <div class="space-y-4 text-sm text-slate-700">
+                                                    <div>
+                                                        <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Deskripsi Masalah</div>
+                                                        <div class="whitespace-pre-line leading-relaxed">{{ idea.problem_description || 'N/A' }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Deskripsi Solusi</div>
+                                                        <div class="whitespace-pre-line leading-relaxed">{{ idea.solution_description || 'N/A' }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Area Penerapan</div>
+                                                        <div>{{ idea.area_of_application || 'N/A' }}</div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Deskripsi Solusi</div>
-                                                <div class="whitespace-pre-line leading-relaxed">{{ idea.solution_description || 'N/A' }}</div>
-                                            </div>
-                                            <div>
-                                                <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Area Penerapan</div>
-                                                <div>{{ idea.area_of_application || 'N/A' }}</div>
+                                            <!-- Attachments -->
+                                            <div class="bg-white rounded-2xl shadow-sm border border-teal-100 p-6">
+                                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                                                    <h2 class="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center">
+                                                        <Paperclip class="w-4 h-4 mr-2 text-teal-600" />
+                                                        Attachments
+                                                    </h2>
+                                                    <div v-if="idea.attachments && idea.attachments.length" class="w-full sm:w-64">
+                                                        <select v-model="selectedAttachmentId" class="w-full rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 px-3 py-1.5 focus:border-teal-500 focus:ring-teal-500">
+                                                            <option v-for="att in idea.attachments" :key="att.id" :value="att.id">{{ att.original_name }}</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div v-if="selectedAttachment">
+                                                    <div class="flex items-center gap-3 mb-3">
+                                                        <div class="min-w-0">
+                                                            <p class="text-sm font-medium text-slate-700 truncate">{{ selectedAttachment.original_name }}</p>
+                                                            <p class="text-xs text-slate-500">{{ (selectedAttachment.size_bytes / 1024 / 1024).toFixed(2) }} MB
+                                                                <span v-if="selectedAttachment.is_compressed" class="ml-1.5 text-teal-600 font-medium">Compressed</span>
+                                                            </p>
+                                                        </div>
+                                                        <a :href="route('attachments.show', selectedAttachment.id)" target="_blank"
+                                                           class="ml-auto shrink-0 text-xs font-medium text-teal-700 hover:text-teal-900 underline underline-offset-2">Open / Download</a>
+                                                    </div>
+                                                    <div class="rounded-lg overflow-hidden border border-slate-100">
+                                                        <img v-if="isImage(selectedAttachment)" :src="previewUrl(selectedAttachment)" :alt="selectedAttachment.original_name" class="w-full max-h-72 object-contain bg-slate-50" loading="lazy" />
+                                                        <video v-else-if="isVideo(selectedAttachment)" :src="previewUrl(selectedAttachment)" controls class="w-full max-h-72 bg-slate-900" />
+                                                        <iframe v-else-if="isPdf(selectedAttachment)" :src="attachmentPreviewUrl(selectedAttachment)" class="w-full h-72" />
+                                                        <div v-else class="p-6 text-center text-xs text-slate-400 italic">Preview unavailable for this file type.</div>
+                                                    </div>
+                                                </div>
+                                                <p v-else class="text-sm text-slate-400 italic">No attachments uploaded.</p>
                                             </div>
                                         </div>
+
+                                        <!-- Workflow Decision -->
+                                        <div v-else key="s1-workflow">
+                                            <WorkflowDecisionForm :idea="idea" type="sps" />
+                                        </div>
+                                    </transition>
+                                </div>
+
+                                <!-- ── STEP 2: Evaluation Matrix ── -->
+                                <div v-else-if="spsPhase === 'evaluation'" key="sps-step2" class="space-y-4">
+                                    <!-- Tab bar -->
+                                    <div class="flex border-b border-slate-200">
+                                        <button @click="step2Tab = 'details'"
+                                            :class="['py-2.5 px-5 text-sm font-medium border-b-2 transition-colors', step2Tab === 'details' ? 'border-teal-500 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300']">
+                                            Submission Details
+                                        </button>
+                                        <button @click="step2Tab = 'matrix'"
+                                            :class="['py-2.5 px-5 text-sm font-medium border-b-2 transition-colors', step2Tab === 'matrix' ? 'border-teal-500 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300']">
+                                            Evaluation Matrix
+                                        </button>
                                     </div>
+                                    <transition mode="out-in"
+                                        enter-active-class="transition duration-150 ease-out"
+                                        enter-from-class="opacity-0 translate-y-1"
+                                        enter-to-class="opacity-100 translate-y-0"
+                                        leave-active-class="transition duration-100 ease-in"
+                                        leave-from-class="opacity-100"
+                                        leave-to-class="opacity-0">
+                                        <div v-if="step2Tab === 'details'" key="s2-details" class="space-y-4">
+                                            <div class="bg-white rounded-2xl shadow-sm border border-teal-100 p-6">
+                                                <h2 class="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center mb-4">
+                                                    <FileText class="w-4 h-4 mr-2 text-teal-600" />
+                                                    Deskripsi Ide
+                                                </h2>
+                                                <div class="space-y-4 text-sm text-slate-700">
+                                                    <div>
+                                                        <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Deskripsi Masalah</div>
+                                                        <div class="whitespace-pre-line leading-relaxed">{{ idea.problem_description || 'N/A' }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Deskripsi Solusi</div>
+                                                        <div class="whitespace-pre-line leading-relaxed">{{ idea.solution_description || 'N/A' }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Area Penerapan</div>
+                                                        <div>{{ idea.area_of_application || 'N/A' }}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="bg-white rounded-2xl shadow-sm border border-teal-100 p-6">
+                                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                                                    <h2 class="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center">
+                                                        <Paperclip class="w-4 h-4 mr-2 text-teal-600" />
+                                                        Attachments
+                                                    </h2>
+                                                    <div v-if="idea.attachments && idea.attachments.length" class="w-full sm:w-64">
+                                                        <select v-model="selectedAttachmentId" class="w-full rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 px-3 py-1.5 focus:border-teal-500 focus:ring-teal-500">
+                                                            <option v-for="att in idea.attachments" :key="att.id" :value="att.id">{{ att.original_name }}</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div v-if="selectedAttachment">
+                                                    <div class="flex items-center gap-3 mb-3">
+                                                        <div class="min-w-0">
+                                                            <p class="text-sm font-medium text-slate-700 truncate">{{ selectedAttachment.original_name }}</p>
+                                                            <p class="text-xs text-slate-500">{{ (selectedAttachment.size_bytes / 1024 / 1024).toFixed(2) }} MB
+                                                                <span v-if="selectedAttachment.is_compressed" class="ml-1.5 text-teal-600 font-medium">Compressed</span>
+                                                            </p>
+                                                        </div>
+                                                        <a :href="route('attachments.show', selectedAttachment.id)" target="_blank"
+                                                           class="ml-auto shrink-0 text-xs font-medium text-teal-700 hover:text-teal-900 underline underline-offset-2">Open / Download</a>
+                                                    </div>
+                                                    <div class="rounded-lg overflow-hidden border border-slate-100">
+                                                        <img v-if="isImage(selectedAttachment)" :src="previewUrl(selectedAttachment)" :alt="selectedAttachment.original_name" class="w-full max-h-72 object-contain bg-slate-50" loading="lazy" />
+                                                        <video v-else-if="isVideo(selectedAttachment)" :src="previewUrl(selectedAttachment)" controls class="w-full max-h-72 bg-slate-900" />
+                                                        <iframe v-else-if="isPdf(selectedAttachment)" :src="attachmentPreviewUrl(selectedAttachment)" class="w-full h-72" />
+                                                        <div v-else class="p-6 text-center text-xs text-slate-400 italic">Preview unavailable for this file type.</div>
+                                                    </div>
+                                                </div>
+                                                <p v-else class="text-sm text-slate-400 italic">No attachments uploaded.</p>
+                                            </div>
+                                        </div>
+                                        <div v-else key="s2-matrix">
+                                            <EvaluationMatrixForm :idea="idea" />
+                                        </div>
+                                    </transition>
+                                </div>
+
+                                <!-- ── DONE: Forwarded to Technical Review ── -->
+                                <div v-else key="sps-done" class="space-y-4">
+                                    <!-- Tab bar -->
+                                    <div class="flex border-b border-slate-200">
+                                        <button @click="doneTab = 'summary'"
+                                            :class="['py-2.5 px-5 text-sm font-medium border-b-2 transition-colors', doneTab === 'summary' ? 'border-teal-500 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300']">
+                                            Result Summary
+                                        </button>
+                                        <button @click="doneTab = 'details'"
+                                            :class="['py-2.5 px-5 text-sm font-medium border-b-2 transition-colors', doneTab === 'details' ? 'border-teal-500 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300']">
+                                            Submission Details
+                                        </button>
+                                    </div>
+                                    <transition mode="out-in"
+                                        enter-active-class="transition duration-150 ease-out"
+                                        enter-from-class="opacity-0 translate-y-1"
+                                        enter-to-class="opacity-100 translate-y-0"
+                                        leave-active-class="transition duration-100 ease-in"
+                                        leave-from-class="opacity-100"
+                                        leave-to-class="opacity-0">
+                                        <div v-if="doneTab === 'summary'" key="done-summary">
+                                            <div class="bg-white rounded-2xl shadow-sm border border-emerald-200 p-8 text-center">
+                                                <div class="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                                                    <CheckCircle class="w-7 h-7 text-emerald-600" />
+                                                </div>
+                                                <h3 class="text-base font-bold text-slate-800 mb-1">Scoring Tersimpan</h3>
+                                                <p class="text-sm text-slate-500 mb-5">
+                                                    Ide ini telah diteruskan ke <span class="font-semibold text-teal-700">Technical Review</span>.
+                                                </p>
+                                                <div class="inline-flex flex-col items-start gap-2 rounded-xl bg-slate-50 border border-slate-200 px-5 py-4 text-left text-sm text-slate-700">
+                                                    <div class="flex gap-3">
+                                                        <span class="text-slate-400 w-28 shrink-0">Kategori</span>
+                                                        <span class="font-semibold capitalize">{{ score.category }}</span>
+                                                    </div>
+                                                    <div class="flex gap-3">
+                                                        <span class="text-slate-400 w-28 shrink-0">Suggestion Factor</span>
+                                                        <span class="font-semibold text-teal-700">{{ sfTotal }}{{ score.category === 'tangible' ? '%' : ' pt' }}</span>
+                                                    </div>
+                                                    <div class="flex gap-3">
+                                                        <span class="text-slate-400 w-28 shrink-0">Est. Reward</span>
+                                                        <span class="font-semibold text-emerald-700">{{ formatRupiah(displayReward) }}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div v-else key="done-details" class="space-y-4">
+                                            <div class="bg-white rounded-2xl shadow-sm border border-teal-100 p-6">
+                                                <h2 class="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center mb-4">
+                                                    <FileText class="w-4 h-4 mr-2 text-teal-600" />
+                                                    Deskripsi Ide
+                                                </h2>
+                                                <div class="space-y-4 text-sm text-slate-700">
+                                                    <div>
+                                                        <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Deskripsi Masalah</div>
+                                                        <div class="whitespace-pre-line leading-relaxed">{{ idea.problem_description || 'N/A' }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Deskripsi Solusi</div>
+                                                        <div class="whitespace-pre-line leading-relaxed">{{ idea.solution_description || 'N/A' }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-xs font-semibold text-teal-700 uppercase tracking-wider mb-1">Area Penerapan</div>
+                                                        <div>{{ idea.area_of_application || 'N/A' }}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="bg-white rounded-2xl shadow-sm border border-teal-100 p-6">
+                                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                                                    <h2 class="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center">
+                                                        <Paperclip class="w-4 h-4 mr-2 text-teal-600" />
+                                                        Attachments
+                                                    </h2>
+                                                    <div v-if="idea.attachments && idea.attachments.length" class="w-full sm:w-64">
+                                                        <select v-model="selectedAttachmentId" class="w-full rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 px-3 py-1.5 focus:border-teal-500 focus:ring-teal-500">
+                                                            <option v-for="att in idea.attachments" :key="att.id" :value="att.id">{{ att.original_name }}</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div v-if="selectedAttachment">
+                                                    <div class="flex items-center gap-3 mb-3">
+                                                        <div class="min-w-0">
+                                                            <p class="text-sm font-medium text-slate-700 truncate">{{ selectedAttachment.original_name }}</p>
+                                                            <p class="text-xs text-slate-500">{{ (selectedAttachment.size_bytes / 1024 / 1024).toFixed(2) }} MB
+                                                                <span v-if="selectedAttachment.is_compressed" class="ml-1.5 text-teal-600 font-medium">Compressed</span>
+                                                            </p>
+                                                        </div>
+                                                        <a :href="route('attachments.show', selectedAttachment.id)" target="_blank"
+                                                           class="ml-auto shrink-0 text-xs font-medium text-teal-700 hover:text-teal-900 underline underline-offset-2">Open / Download</a>
+                                                    </div>
+                                                    <div class="rounded-lg overflow-hidden border border-slate-100">
+                                                        <img v-if="isImage(selectedAttachment)" :src="previewUrl(selectedAttachment)" :alt="selectedAttachment.original_name" class="w-full max-h-72 object-contain bg-slate-50" loading="lazy" />
+                                                        <video v-else-if="isVideo(selectedAttachment)" :src="previewUrl(selectedAttachment)" controls class="w-full max-h-72 bg-slate-900" />
+                                                        <iframe v-else-if="isPdf(selectedAttachment)" :src="attachmentPreviewUrl(selectedAttachment)" class="w-full h-72" />
+                                                        <div v-else class="p-6 text-center text-xs text-slate-400 italic">Preview unavailable for this file type.</div>
+                                                    </div>
+                                                </div>
+                                                <p v-else class="text-sm text-slate-400 italic">No attachments uploaded.</p>
+                                            </div>
+                                        </div>
+                                    </transition>
                                 </div>
                             </transition>
                         </div>
@@ -200,6 +507,68 @@ const timelineMeta = (s) => statusPalette[s] || statusPalette.Submitted;
                                     <div>{{ idea.area_of_application || 'N/A' }}</div>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- ════ USER: Attachments ════════════════════════ -->
+                        <div v-if="!adminActions" class="bg-white rounded-2xl shadow-sm border border-teal-100 p-6">
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                                <h2 class="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center">
+                                    <Paperclip class="w-4 h-4 mr-2 text-teal-600" />
+                                    Attachments
+                                </h2>
+                                <div v-if="idea.attachments && idea.attachments.length" class="w-full sm:w-64">
+                                    <label class="sr-only" for="attachment-select-user">Select attachment</label>
+                                    <select
+                                        id="attachment-select-user"
+                                        v-model="selectedAttachmentId"
+                                        class="w-full rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 px-3 py-1.5 focus:border-teal-500 focus:ring-teal-500"
+                                    >
+                                        <option v-for="att in idea.attachments" :key="att.id" :value="att.id">
+                                            {{ att.original_name }}
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div v-if="selectedAttachment">
+                                <div class="flex items-center gap-3 mb-3">
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-medium text-slate-700 truncate">{{ selectedAttachment.original_name }}</p>
+                                        <p class="text-xs text-slate-500">
+                                            {{ (selectedAttachment.size_bytes / 1024 / 1024).toFixed(2) }} MB
+                                            <span v-if="selectedAttachment.is_compressed" class="ml-1.5 text-teal-600 font-medium">Compressed</span>
+                                        </p>
+                                    </div>
+                                    <a :href="route('attachments.show', selectedAttachment.id)" target="_blank"
+                                       class="ml-auto shrink-0 text-xs font-medium text-teal-700 hover:text-teal-900 underline underline-offset-2">
+                                        Open / Download
+                                    </a>
+                                </div>
+                                <div class="rounded-lg overflow-hidden border border-slate-100">
+                                    <img
+                                        v-if="isImage(selectedAttachment)"
+                                        :src="previewUrl(selectedAttachment)"
+                                        :alt="selectedAttachment.original_name"
+                                        class="w-full max-h-72 object-contain bg-slate-50"
+                                        loading="lazy"
+                                    />
+                                    <video
+                                        v-else-if="isVideo(selectedAttachment)"
+                                        :src="previewUrl(selectedAttachment)"
+                                        controls
+                                        class="w-full max-h-72 bg-slate-900"
+                                    />
+                                    <iframe
+                                        v-else-if="isPdf(selectedAttachment)"
+                                        :src="attachmentPreviewUrl(selectedAttachment)"
+                                        class="w-full h-72"
+                                    />
+                                    <div v-else class="p-6 text-center text-xs text-slate-400 italic">
+                                        Preview unavailable for this file type.
+                                    </div>
+                                </div>
+                            </div>
+                            <p v-else class="text-sm text-slate-400 italic">No attachments uploaded.</p>
                         </div>
 
                         <!-- ════ USER: Hasil Evaluasi (read-only) ════════ -->

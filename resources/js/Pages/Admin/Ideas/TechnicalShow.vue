@@ -82,7 +82,7 @@ onMounted(() => {
     props.idea.attachments.forEach((attachment) => loadPreview(attachment));
 });
 
-const activeTab = ref('workflow');
+const activeTab = ref('details');
 
 const score = computed(() => props.idea.score || {});
 const aTotal = computed(() =>
@@ -245,15 +245,15 @@ const timelineMeta = (status) => statusPalette[status] || statusPalette.Submitte
                             <!-- Tabs Navigation -->
                             <div class="flex border-b border-slate-200">
                                 <button
-                                    @click="activeTab = 'workflow'"
+                                    @click="activeTab = 'details'"
                                     :class="[
                                         'py-2.5 px-5 text-sm font-medium border-b-2 transition-colors',
-                                        activeTab === 'workflow'
+                                        activeTab === 'details'
                                             ? 'border-teal-500 text-teal-700'
                                             : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                                     ]"
                                 >
-                                    Workflow Decision
+                                    Submission Details
                                 </button>
                                 <button
                                     @click="activeTab = 'evaluation'"
@@ -267,29 +267,21 @@ const timelineMeta = (status) => statusPalette[status] || statusPalette.Submitte
                                     Evaluation Matrix
                                 </button>
                                 <button
-                                    @click="activeTab = 'details'"
+                                    @click="activeTab = 'workflow'"
                                     :class="[
                                         'py-2.5 px-5 text-sm font-medium border-b-2 transition-colors',
-                                        activeTab === 'details'
+                                        activeTab === 'workflow'
                                             ? 'border-teal-500 text-teal-700'
                                             : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                                     ]"
                                 >
-                                    Submission Details
+                                    Workflow Decision
                                 </button>
                             </div>
 
                             <!-- Tabs Content -->
                             <transition mode="out-in" enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0 translate-y-1" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 translate-y-1">
-                                <div v-if="activeTab === 'workflow'" :key="'workflow'">
-                                    <WorkflowDecisionForm :idea="idea" type="manager" />
-                                </div>
-
-                                <div v-else-if="activeTab === 'evaluation'" :key="'evaluation'">
-                                    <EvaluationMatrixForm :idea="idea" />
-                                </div>
-
-                                <div v-else-if="activeTab === 'details'" :key="'details'" class="space-y-6">
+                                <div v-if="activeTab === 'details'" :key="'details'" class="space-y-6">
                                     <!-- Technical Focus -->
                                     <div class="bg-white rounded-xl shadow-sm border-2 border-teal-300 overflow-hidden">
                                         <div class="p-5">
@@ -373,6 +365,14 @@ const timelineMeta = (status) => statusPalette[status] || statusPalette.Submitte
                                         </div>
                                         <p v-else class="mt-4 text-sm text-slate-400 italic">No attachments uploaded.</p>
                                     </div>
+                                </div>
+
+                                <div v-else-if="activeTab === 'evaluation'" :key="'evaluation'">
+                                    <EvaluationMatrixForm :idea="idea" />
+                                </div>
+
+                                <div v-else-if="activeTab === 'workflow'" :key="'workflow'">
+                                    <WorkflowDecisionForm :idea="idea" type="manager" />
                                 </div>
                             </transition>
                         </div>

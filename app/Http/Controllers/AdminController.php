@@ -104,9 +104,9 @@ class AdminController extends Controller
         } else {
             $actionToLog = $oldStatus; // Log the phase that was just completed
             if ($idea->status === 'SPS Review') {
-                $idea->status = 'Technical Review';
-                $idea->completion_percentage = 30;
-                $idea->current_reviewer_role = 'technical_reviewer';
+                // Workflow approved — stay at SPS Review until evaluation matrix is saved.
+                // Advancement to Technical Review happens in score().
+                $idea->completion_percentage = 25;
             } else {
                 $idea->status = 'Implemented';
                 $idea->completion_percentage = 100;
@@ -299,24 +299,39 @@ class AdminController extends Controller
         $idea->score()->updateOrCreate(
             ['idea_id' => $idea->id],
             [
-                'category' => $validated['category'],
-                'cost_savings' => $validated['cost_savings'] ?? 0,
-                'reward_percent' => $validated['reward_percent'] ?? 0,
-                'voucher_reward' => $validated['voucher_reward'] ?? 0,
-                'appraisal' => $validated['appraisal'],
-                'factor_a1' => $validated['factor_a1'],
-                'factor_a2' => $validated['factor_a2'],
-                'factor_a3' => $validated['factor_a3'],
-                'factor_b' => $validated['factor_b'],
+                'category'              => $validated['category'],
+                'cost_savings'          => $validated['cost_savings'] ?? 0,
+                'reward_percent'        => $validated['reward_percent'] ?? 0,
+                'voucher_reward'        => $validated['voucher_reward'] ?? 0,
+                'appraisal'             => $validated['appraisal'],
+                'factor_a1'             => $validated['factor_a1'],
+                'factor_a2'             => $validated['factor_a2'],
+                'factor_a3'             => $validated['factor_a3'],
+                'factor_b'              => $validated['factor_b'],
                 'implementation_factor' => $validated['implementation_factor'],
-                'factor_c' => $validated['factor_c'] ?? 0,
-                'suggestion_factor' => $suggestionFactor,
-                'total_points' => $totalPoints,
-                'calculated_reward' => $calculatedReward,
+                'factor_c'              => $validated['factor_c'] ?? 0,
+                'suggestion_factor'     => $suggestionFactor,
+                'total_points'          => $totalPoints,
+                'calculated_reward'     => $calculatedReward,
                 'final_adjusted_reward' => $validated['final_adjusted_reward'] ?? null,
-                'remark' => $validated['remark'],
+                'remark'                => $validated['remark'],
             ]
         );
+
+        // Advance to Technical Review once SPS has completed the evaluation matrix.
+        if ($idea->status === 'SPS Review') {
+            $idea->status                = 'Technical Review';
+            $idea->completion_percentage = 40;
+            $idea->current_reviewer_role = 'technical_reviewer';
+            $idea->save();
+
+            ReviewLog::create([
+                'idea_id'     => $idea->id,
+                'reviewer_id' => Auth::id(),
+                'action'      => 'Technical Review',
+                'comments'    => 'Evaluation matrix completed. Idea forwarded to Technical Review.',
+            ]);
+        }
 
         return redirect()
             ->back()

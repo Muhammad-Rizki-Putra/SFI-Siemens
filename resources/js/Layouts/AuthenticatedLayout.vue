@@ -6,7 +6,7 @@ import ToastContainer from '@/Components/ToastContainer.vue';
 import {
     LayoutDashboard, Lightbulb, Trophy, ShieldCheck,
     ChevronLeft, ChevronRight, LogOut, User, Menu, X, UserCircle,
-    Globe
+    Globe, Users
 } from 'lucide-vue-next';
 
 const { t, locale } = useI18n();
@@ -51,6 +51,13 @@ const navItems = computed(() => {
             active: route().current('admin.ideas.index'),
             icon: ShieldCheck,
             show: isAdmin.value,
+        },
+        {
+            label: 'User Management',
+            href: route('admin.users.index'),
+            active: route().current('admin.users.index'),
+            icon: Users,
+            show: user.value?.role === 'sps',
         },
     ];
     return items.filter(i => i.show);

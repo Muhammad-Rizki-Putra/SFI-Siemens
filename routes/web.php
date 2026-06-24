@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\IdeaController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\UserManagementController;
 
 Route::get('/unauthorized', function () {
     return response('Unauthorized. Please access via the company portal.', 401);
@@ -62,6 +63,10 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/ideas/{idea}/review', [AdminController::class, 'review'])->name('ideas.review');
             Route::post('/ideas/{idea}/score', [AdminController::class, 'score'])->name('ideas.score');
             Route::post('/ideas/{idea}/workflow', [AdminController::class, 'workflow'])->name('ideas.workflow');
+
+            // User management (SPS only)
+            Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
+            Route::post('/users/{user}/role', [UserManagementController::class, 'updateRole'])->name('users.updateRole');
         });
 });
 
